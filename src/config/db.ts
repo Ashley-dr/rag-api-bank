@@ -13,7 +13,10 @@ const pool: PgPool = new Pool({
   user: process.env.DB_USER || "postgres",
   password: process.env.DB_PASSWORD || "",
 });
+// const connectionString = process.env.DATABASE_URL || 
+//   `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`
 
+// const pool = new Pool({ connectionString })
 // Test connection on startup
 pool.connect((err, client, release) => {
   if (err) {

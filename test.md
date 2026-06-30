@@ -81,6 +81,10 @@ volumes:
 
 ## 4. Start the system
 
+
+docker pull node:20-slim
+docker pull pgvector/pgvector:pg18
+
 1. Open Ollama and ensure your model is available.
 2. Download the model if needed:
 

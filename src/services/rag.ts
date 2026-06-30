@@ -11,8 +11,8 @@ import type {
 dotenv.config();
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.1";
-const TOP_K = parseInt(process.env.TOP_K_RESULTS || "5", 10);
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "phi3";
+const TOP_K = parseInt(process.env.TOP_K_RESULTS || "10", 10);
 
 console.log(`🔧 Using Ollama: ${OLLAMA_BASE_URL} (model=${OLLAMA_MODEL})`);
 
