@@ -31,7 +31,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-// 404 handler
+
 app.use((req, res) => {
   res.status(404).json({
     error: "Not found",
@@ -39,7 +39,7 @@ app.use((req, res) => {
   });
 });
 
-// Error handler
+
 app.use((err: Error, req: express.Request, res: express.Response) => {
   console.error("Express error:", err.message);
   res.status(500).json({
@@ -48,16 +48,13 @@ app.use((err: Error, req: express.Request, res: express.Response) => {
   });
 });
 
-/**
- * Initialize and start server
- */
+
 async function start(): Promise<void> {
   try {
     console.log("\n╔════════════════════════════════════════╗");
     console.log("║  RAG API BANK Server Starting...       ║");
     console.log("╚════════════════════════════════════════╝\n");
 
-    // Initialize database
     console.log("📦 Initializing database...");
     const dbOk = await initDatabase();
     if (!dbOk) {
