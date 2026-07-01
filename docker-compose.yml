@@ -1,4 +1,4 @@
-version: "3.9"
+# version: "3.9"
 
 services:
   api:
@@ -17,6 +17,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
       OLLAMA_MODEL: ${OLLAMA_MODEL}
+      GROQ_API_KEY: ${GROQ_API_KEY}
       TOP_K_RESULTS: ${TOP_K_RESULTS}
     restart: unless-stopped
     depends_on:
