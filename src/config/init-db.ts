@@ -8,7 +8,26 @@ export async function initDatabase(): Promise<boolean> {
     await pool.query("CREATE EXTENSION IF NOT EXISTS vector");
     console.log("✅ pgvector extension enabled");
 
-    // Create documents table
+    
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conversations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_id TEXT NOT NULL,
+        user_message TEXT NOT NULL,
+        ai_response TEXT NOT NULL,
+        sources TEXT[] DEFAULT '{}',
+        chunks_used INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log("✅ Conversations table created");
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_conversation_session 
+      ON conversations(session_id, created_at DESC)
+    `);
+
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS documents (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

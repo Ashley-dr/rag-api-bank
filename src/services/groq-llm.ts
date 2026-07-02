@@ -18,30 +18,41 @@ interface GroqResponse {
   }>;
 }
 
-export async function callGroq(
+export async function callGroqWithMemory(
   question: string,
   context: string,
+  conversationContext: string,
 ): Promise<string> {
   if (!GROQ_API_KEY) {
     throw new Error("GROQ_API_KEY not set");
   }
 
-  const prompt = `You are a helpful banking assistant. Answer the user's question based ONLY on the provided context.
+  const prompt = `You are a helpful banking assistant. You have access to previous conversations with this user.
 
-CONTEXT:${context}
+PREVIOUS CONVERSATION:
+${conversationContext}
 
-QUESTION: ${question}
+CURRENT CONTEXT (Document Data):
+${context}
+
+CURRENT QUESTION: ${question}
+
+Please answer the current question while:
+1. Referencing previous conversations if relevant
+2. Using ONLY the provided document context
+3. Being consistent with previous answers
+4. If asked about a numbered list from earlier, refer back to it
 
 ANSWER:`;
 
   try {
-    console.log("⚡ Calling Groq API...");
+    console.log("⚡ Calling Groq API with memory...");
 
     const messages: GroqMessage[] = [
       {
         role: "system",
         content:
-          "You are a helpful assistant that answers questions based on provided context only.",
+          "You are a helpful banking assistant with memory of previous conversations. Answer based ONLY on provided context.",
       },
       {
         role: "user",
@@ -64,7 +75,8 @@ ANSWER:`;
     });
 
     if (!response.ok) {
-      const error = (await response.json()) as { error?: { message?: string } };
+      const error =
+        ((await response.json()) as { error?: { message?: string } }) || {};
       throw new Error(
         `Groq API error: ${error.error?.message || response.status}`,
       );
@@ -77,7 +89,18 @@ ANSWER:`;
     return answer;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Groq error:", errorMessage);
+    console.error("❌ Groq error:", errorMessage);
     throw new Error(`Failed to get response from Groq: ${errorMessage}`);
   }
+}
+
+export async function callGroq(
+  question: string,
+  context: string,
+): Promise<string> {
+  return callGroqWithMemory(
+    question,
+    context,
+    "This is the start of the conversation.",
+  );
 }

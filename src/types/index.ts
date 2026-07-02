@@ -84,3 +84,29 @@ export interface OllamaResponse {
 export interface FileParseResult {
   text: string;
 }
+
+
+export interface ConversationMessage {
+  id: string
+  session_id: string
+  user_message: string
+  ai_response: string
+  sources: string[]
+  chunks_used: number
+  created_at: Date
+}
+
+export interface ChatRequestWithSession {
+  message: string
+  session_id?: string 
+}
+
+export interface ChatResponseWithHistory {
+  success: boolean
+  question: string
+  answer: string
+  sources: string[]
+  chunksUsed: number
+  session_id: string
+  conversation_history: ConversationMessage[]  
+}
