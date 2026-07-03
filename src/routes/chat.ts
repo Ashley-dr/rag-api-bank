@@ -57,37 +57,6 @@ router.get("/health", (req: Request, res: Response): void => {
   })
 })
 
-router.post(
-  "/clear-session",
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { session_id } = req.body
-
-      if (!session_id) {
-        res.status(400).json({
-          error: "Invalid request",
-          message: "session_id is required",
-        } as ApiError)
-        return
-      }
-
-      await clearSessionConversation(session_id)
-
-      res.json({
-        success: true,
-        message: "Conversation cleared",
-        session_id,
-      })
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      console.error("Clear session error:", errorMessage)
-      res.status(500).json({
-        error: "Failed to clear session",
-        message: errorMessage,
-      } as ApiError)
-    }
-  }
-)
 
 
 router.delete(
@@ -104,7 +73,7 @@ router.delete(
         return
       }
 
-      console.log(`🗑️  Deleting conversation for session: ${sessionId}`)
+      console.log(`Deleting conversation for session: ${sessionId}`)
 
       // Delete from database
       const result = await pool.query(
