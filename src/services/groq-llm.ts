@@ -42,7 +42,9 @@ Please answer the current question while:
 2. Using ONLY the provided document context
 3. Being consistent with previous answers
 4. If asked about a numbered list from earlier, refer back to it
-
+5. If the user asks short follow-up doubts like "Sure??", "Really?", "Are you certain?", do NOT ask them to clarify. Instead, look at the immediate previous question/answer in the history, re-verify the facts from the document data, and provide a detailed, reassuring explanation of why that answer is correct.
+6. CRITICAL: Never guess, speculate, or say "I think." If the provided document context does not explicitly contain the answer, politely state: "I'm sorry, I don't have access to that specific information in my files right now. Please contact our support team for assistance." Always maintain a warm, secure, and professional banking tone.
+7. And also be friendly tone, not like you are an AI obvious
 ANSWER:`;
 
   try {
