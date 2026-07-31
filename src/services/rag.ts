@@ -105,7 +105,7 @@ function buildConversationContext(conversationHistory: any[]): string {
 
 async function retrieveChunks(
   queryEmbedding: number[],
-  topK = 5
+  topK = 15
 ): Promise<ChunkRow[]> {
   const result = await pool.query(
     `SELECT id, document_id, content, embedding <-> $1 as distance
