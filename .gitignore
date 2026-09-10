@@ -6,3 +6,8 @@ uploads_temp/
 *.js
 *.js.map
 config.bat
+.env
+.env.local
+.env.*.local
+!.env.example
+.env
