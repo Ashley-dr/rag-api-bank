@@ -1,0 +1,21 @@
+# Copy this file to terraform.tfvars and fill in your own values.
+# terraform.tfvars is git-ignored because it can contain environment-specific details.
+
+aws_region   = "ap-southeast-1"
+project_name = "aspac-elearning"
+
+instance_type    = "t3.medium"
+root_volume_size = 30
+
+# Name of an EC2 key pair that already exists in aws_region above.
+key_name = "your-existing-ec2-key-pair-name"
+
+# Your public IP with /32, e.g. "203.0.113.10/32". Get it with: curl ifconfig.me
+allowed_ssh_cidr = "203.0.113.10/32"
+
+# Who can reach the app over 80/443/3000. Leave open unless you're locking this down too.
+allowed_http_cidr = "0.0.0.0/0"
+
+# Optional: security group ID of your existing RDS instance (sg-xxxxxxxxxxxxxxxxx).
+# Leave blank to skip wiring the app server into the RDS security group automatically.
+rds_security_group_id = ""

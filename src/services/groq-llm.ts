@@ -250,10 +250,15 @@ When possible, provide complete answers instead of one-line responses.
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: "qwen/qwen3.6-27b",
         messages,
         max_tokens: 500,
         temperature: 0.7,
+        max_completion_tokens: 2048,
+        top_p: 0.95,
+        reasoning_effort: "default",
+        stream: true,
+        stop: null
       }),
     });
 

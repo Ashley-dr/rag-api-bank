@@ -152,6 +152,9 @@ curl.exe -X POST http://localhost:3000/api/admin/upload `
   -H "X-API-Key: 252525" `
   -F "file=@C:\path\to\your\file.docx"
 ```
+curl.exe -X POST http://18.142.40.247:3000/api/admin/upload `
+  -H "X-API-Key: 252525" `
+  -F "file=@C:/Users/adrodriguez/Downloads/carcar.docx"
 
 Supported file types include PDF, DOCX, TXT, JPG, PNG, and more.
 
