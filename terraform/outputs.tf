@@ -3,6 +3,11 @@ output "public_ip" {
   value       = aws_eip.app_server.public_ip
 }
 
+output "https_url" {
+  description = "HTTPS URL for the app, using a free sslip.io hostname + Let's Encrypt cert (no domain required)"
+  value       = "https://${aws_eip.app_server.public_ip}.sslip.io"
+}
+
 output "public_dns" {
   description = "Public DNS name of the server"
   value       = aws_instance.app_server.public_dns

@@ -5,6 +5,7 @@ import { initDatabase } from "./config/init-db.js";
 import { initEmbeddings } from "./services/embeddings.js";
 import adminRoutes from "./routes/admin.js";
 import chatRoutes from "./routes/chat.js";
+import handoffRoutes, { agentPageRouter } from "./routes/handoff.js";
 import {
   securityHeaders,
   generalLimiter,
@@ -19,12 +20,23 @@ dotenv.config();
 const app: Express = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
+// The API runs behind nginx (see terraform/user_data.sh). Trust its
+// X-Forwarded-For so rate limits and Turnstile see the real client IP
+// instead of 127.0.0.1 (otherwise all visitors share one limit).
+app.set("trust proxy", 1);
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 // Security: headers, global rate limiting and slowdown
 app.use(securityHeaders);
+
+// Live chat with a human. Mounted BEFORE the global limiter because the chat
+// polls every few seconds (it has its own, tighter per-route limits).
+app.use("/api/handoff", handoffRoutes);
+app.use("/agent", agentPageRouter);
+
 app.use(generalLimiter);
 app.use(slowDownMiddleware);
 

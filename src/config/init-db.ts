@@ -59,6 +59,39 @@ export async function initDatabase(): Promise<boolean> {
     `);
     console.log("✅ vector search index created");
 
+    // Live "talk to a human" chat sessions (separate from AI conversations)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS handoff_sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        chat_session_id TEXT,
+        name TEXT NOT NULL,
+        contact_method TEXT NOT NULL,
+        contact TEXT NOT NULL,
+        topic TEXT NOT NULL,
+        details TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'waiting',
+        customer_token_hash TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        joined_at TIMESTAMPTZ,
+        closed_at TIMESTAMPTZ,
+        closed_by TEXT
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS handoff_messages (
+        id BIGSERIAL PRIMARY KEY,
+        handoff_id UUID NOT NULL REFERENCES handoff_sessions(id) ON DELETE CASCADE,
+        sender TEXT NOT NULL,
+        body TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_handoff_messages_session
+      ON handoff_messages(handoff_id, id)
+    `);
+    console.log("✅ handoff tables ready");
+
     console.log("✅ Database initialization complete!");
     return true;
   } catch (error) {

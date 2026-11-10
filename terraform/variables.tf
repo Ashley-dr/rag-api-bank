@@ -43,3 +43,9 @@ variable "rds_security_group_id" {
   type        = string
   default     = ""
 }
+
+variable "letsencrypt_email" {
+  description = "Optional email for Let's Encrypt certificate expiry notices. Leave blank to register without one."
+  type        = string
+  default     = ""
+}

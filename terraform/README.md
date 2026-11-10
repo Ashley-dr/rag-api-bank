@@ -8,8 +8,8 @@ existing AWS RDS Postgres database this project already uses.
 
 | Resource | Purpose |
 |---|---|
-| `aws_instance.app_server` | Ubuntu 24.04 LTS EC2 instance (Docker pre-installed via `user_data.sh`) |
-| `aws_eip.app_server` | Static public IP attached to the instance, so the IP never changes on reboot |
+| `aws_instance.app_server` | Ubuntu 24.04 LTS EC2 instance (Docker, nginx, certbot pre-installed via `user_data.sh`) |
+| `aws_eip.app_server` / `aws_eip_association.app_server` | Static public IP attached to the instance, so the IP never changes on reboot |
 | `aws_security_group.app_server` | Firewall: allows SSH (22), HTTP (80), HTTPS (443), app port (3000) |
 | `aws_security_group_rule.allow_app_to_rds` | *(optional)* opens port 5432 on your existing RDS security group to this server |
 
@@ -179,17 +179,42 @@ instead of RDS, `docker compose up -d --build` works as-is — same as local dev
 
 ## Step 11 — Confirm it's working
 
-From your browser, visit:
+From your browser, visit the `https_url` output (an nginx reverse proxy in front of the app,
+with a free trusted cert — see below):
 
 ```
-http://<public_ip>
+terraform output https_url
 ```
 
-You should see the ASPAC eLearning app. Check logs anytime with:
+You should see the ASPAC eLearning app over HTTPS with no certificate warning. Check logs
+anytime with:
 
 ```bash
 docker logs -f aspac-elearning
 ```
+
+## HTTPS, without owning a domain
+
+This setup doesn't require a purchased domain. `user_data.sh` installs nginx as a reverse
+proxy in front of the app (port 3000) and requests a **free, trusted** cert from Let's Encrypt
+for a hostname like `13.212.10.5.sslip.io` — [sslip.io](https://sslip.io) is a public DNS
+service that resolves `<ip>.sslip.io` to `<ip>` automatically, with no registration, so
+Let's Encrypt can validate and issue a real cert against your instance's Elastic IP. HTTP (80)
+redirects to HTTPS (443) automatically.
+
+Notes:
+- Set `letsencrypt_email` in `terraform.tfvars` if you want Let's Encrypt expiry-notice emails
+  (optional — it registers without one otherwise).
+- Certificate issuance happens during first boot and can take a few minutes: the script retries
+  for up to 10 minutes because the Elastic IP attaches to the instance a few seconds *after*
+  boot starts, and the cert can't be issued until traffic to that IP actually reaches the box.
+  If `https_url` doesn't work right after `apply`, wait a bit and check
+  `sudo journalctl -u cloud-init -f` on the server.
+- If you ever get a bare domain later, swap it in by pointing its DNS `A` record at `public_ip`
+  and re-running certbot for that hostname instead.
+- The app is still also reachable directly and unencrypted on port 3000
+  (`allowed_http_cidr` / firewall both leave it open) — close that off if you want to force
+  everything through HTTPS.
 
 ## Updating the app later
 
@@ -204,8 +229,8 @@ docker run -d --name aspac-elearning --env-file .env -p 80:3000 --restart unless
 
 ## Optional next steps (not covered by this Terraform)
 
-- **HTTPS / custom domain**: put a reverse proxy (Caddy or nginx + certbot) in front of the
-  app container, and point your domain's DNS `A` record at the `public_ip` output.
+- **Custom domain**: point your domain's DNS `A` record at the `public_ip` output and re-run
+  certbot on the server for that hostname instead of the sslip.io one.
 - **Production build**: the shared `Dockerfile` runs `next dev`. For a real production
   deployment, build with `npm run build` and start with `npm run start` instead.
 - **Remote Terraform state**: state is stored locally (`terraform.tfstate`) by default, fine

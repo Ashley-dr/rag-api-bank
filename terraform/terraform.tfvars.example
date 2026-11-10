@@ -19,3 +19,6 @@ allowed_http_cidr = "0.0.0.0/0"
 # Optional: security group ID of your existing RDS instance (sg-xxxxxxxxxxxxxxxxx).
 # Leave blank to skip wiring the app server into the RDS security group automatically.
 rds_security_group_id = ""
+
+# Optional: email for Let's Encrypt expiry notices. Leave blank to register without one.
+letsencrypt_email = ""

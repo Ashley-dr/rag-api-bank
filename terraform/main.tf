@@ -1,3 +1,13 @@
+# Allocated on its own (not tied to the instance yet) so its address is known
+# before the instance's user_data is rendered below.
+resource "aws_eip" "app_server" {
+  domain = "vpc"
+
+  tags = {
+    Name = "${var.project_name}-eip"
+  }
+}
+
 resource "aws_instance" "app_server" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
@@ -11,7 +21,10 @@ resource "aws_instance" "app_server" {
     delete_on_termination = true
   }
 
-  user_data                   = file("${path.module}/user_data.sh")
+  user_data = templatefile("${path.module}/user_data.sh", {
+    sslip_hostname    = "${aws_eip.app_server.public_ip}.sslip.io"
+    letsencrypt_email = var.letsencrypt_email
+  })
   user_data_replace_on_change = true
 
   tags = {
@@ -19,11 +32,9 @@ resource "aws_instance" "app_server" {
   }
 }
 
-resource "aws_eip" "app_server" {
-  instance = aws_instance.app_server.id
-  domain   = "vpc"
-
-  tags = {
-    Name = "${var.project_name}-eip"
-  }
+# Separate from aws_eip so the instance can depend on the EIP's address (for
+# the sslip.io hostname) without creating a dependency cycle.
+resource "aws_eip_association" "app_server" {
+  instance_id   = aws_instance.app_server.id
+  allocation_id = aws_eip.app_server.id
 }
