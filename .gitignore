@@ -8,3 +8,5 @@ uploads_temp/
 config.bat
 .env.*.local
 !.env.example
+.env.local
+.env
