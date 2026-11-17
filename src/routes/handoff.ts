@@ -5,11 +5,15 @@
 //    POST /api/handoff                    create request (Turnstile) + email support
 //    GET  /api/handoff/:id/messages       poll  (?after=<last message id>)
 //    POST /api/handoff/:id/messages       send
+//    PATCH  /api/handoff/:id/messages/:mid  edit own message
+//    DELETE /api/handoff/:id/messages/:mid  delete own message
 //    POST /api/handoff/:id/close          end chat
 //
 //  Representative (header X-Agent-Token, from the link in the email):
 //    GET  /api/handoff/agent/:id          request details + messages (?after=)
 //    POST /api/handoff/agent/:id/messages reply (first reply joins the chat)
+//    PATCH  /api/handoff/agent/:id/messages/:mid  edit own message
+//    DELETE /api/handoff/agent/:id/messages/:mid  delete own message
 //    POST /api/handoff/agent/:id/close    end chat
 //
 //  GET /agent/:id#k=<token>               the representative's chat page
@@ -107,13 +111,26 @@ type SessionRow = {
   created_at: string;
 };
 
-type MessageRow = { id: string; sender: string; body: string; created_at: string };
+type MessageRow = {
+  id: string;
+  sender: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  deleted_at: string | null;
+  updated_at: string | null;
+};
+
+const MESSAGE_COLS = "id, sender, body, created_at, edited_at, deleted_at, updated_at";
 
 const toMessage = (m: MessageRow) => ({
   id: Number(m.id),
   sender: m.sender,
-  text: m.body,
+  text: m.deleted_at ? "" : m.body,
   createdAt: m.created_at,
+  edited: !!m.edited_at && !m.deleted_at,
+  deleted: !!m.deleted_at,
+  updatedAt: m.updated_at,
 });
 
 function buildAgentEmail(s: {
@@ -176,21 +193,47 @@ export function createHandoffRouter(db: Pool): Router {
     );
     return rows[0] || null;
   }
+ 
 
-  async function loadMessages(id: string, after: unknown) {
+  // New messages (id > after) plus earlier messages edited/deleted since `since`.
+  async function loadMessages(id: string, after: unknown, since?: unknown) {
     const afterId = Number.isFinite(Number(after)) ? Math.max(0, Number(after)) : 0;
+    const sinceDate = since ? new Date(String(since)) : null;
+    const hasSince = !!sinceDate && !Number.isNaN(sinceDate.getTime());
     const { rows } = await db.query<MessageRow>(
-      `SELECT id, sender, body, created_at FROM handoff_messages
-       WHERE handoff_id = $1 AND id > $2 ORDER BY id ASC LIMIT 200`,
-      [id, afterId],
+      `SELECT ${MESSAGE_COLS} FROM handoff_messages
+       WHERE handoff_id = $1 AND (id > $2 OR ($3::timestamptz IS NOT NULL AND id <= $2 AND updated_at > $3::timestamptz))
+       ORDER BY id ASC LIMIT 400`,
+      [id, afterId, hasSince ? sinceDate : null],
     );
     return rows.map(toMessage);
+  }
+
+  async function editMessage(id: string, messageId: number, sender: string, text: string) {
+    const { rows } = await db.query<MessageRow>(
+      `UPDATE handoff_messages SET body = $4, edited_at = NOW(), updated_at = NOW()
+       WHERE handoff_id = $1 AND id = $2 AND sender = $3 AND deleted_at IS NULL
+       RETURNING ${MESSAGE_COLS}`,
+      [id, messageId, sender, text],
+    );
+    return rows[0] ? toMessage(rows[0]) : null;
+  }
+
+  // soft delete: keeps the row (so the other side's poll sees it) but wipes the text
+  async function deleteMessage(id: string, messageId: number, sender: string) {
+    const { rows } = await db.query<MessageRow>(
+      `UPDATE handoff_messages SET body = '', deleted_at = NOW(), updated_at = NOW()
+       WHERE handoff_id = $1 AND id = $2 AND sender = $3 AND deleted_at IS NULL
+       RETURNING ${MESSAGE_COLS}`,
+      [id, messageId, sender],
+    );
+    return rows[0] ? toMessage(rows[0]) : null;
   }
 
   async function addMessage(id: string, sender: string, body: string) {
     const { rows } = await db.query<MessageRow>(
       `INSERT INTO handoff_messages (handoff_id, sender, body)
-       VALUES ($1, $2, $3) RETURNING id, sender, body, created_at`,
+       VALUES ($1, $2, $3) RETURNING ${MESSAGE_COLS}`,
       [id, sender, body],
     );
     return toMessage(rows[0]);
@@ -266,6 +309,41 @@ export function createHandoffRouter(db: Pool): Router {
     return Number(rows[0]?.n || 0) >= MAX_MESSAGES_PER_SESSION;
   };
 
+  const messageMutation =
+    (who: "customer" | "agent", op: "edit" | "delete"): RequestHandler =>
+    async (req, res, next) => {
+      try {
+        const s = (req as Authed).session as SessionRow;
+        const messageId = Number(req.params.mid);
+        if (!Number.isInteger(messageId) || messageId < 1) {
+          res.status(400).json({ error: "Invalid request", message: "Invalid message." });
+          return;
+        }
+        if (s.status === "closed") {
+          res.status(409).json({ error: "Closed", message: "This chat has ended." });
+          return;
+        }
+        let message;
+        if (op === "edit") {
+          const text = parseText(req, res);
+          if (text === null) return;
+          message = await editMessage(s.id, messageId, who, text);
+        } else {
+          message = await deleteMessage(s.id, messageId, who);
+        }
+        if (!message) {
+          res.status(404).json({
+            error: "Not found",
+            message: "Message not found, already deleted, or not yours.",
+          });
+          return;
+        }
+        res.json({ message });
+      } catch (err) {
+        next(err);
+      }
+    };
+
   // ===== Representative routes (registered first: /agent/... before /:id/...) =====
   router.get("/agent/:id", pollLimiter, agentAuth, async (req, res, next) => {
     try {
@@ -279,7 +357,7 @@ export function createHandoffRouter(db: Pool): Router {
         topic: s.topic,
         details: s.details,
         createdAt: s.created_at,
-        messages: await loadMessages(s.id, req.query.after),
+        messages: await loadMessages(s.id, req.query.after, req.query.since),
       });
     } catch (err) {
       next(err);
@@ -312,6 +390,9 @@ export function createHandoffRouter(db: Pool): Router {
       next(err);
     }
   });
+
+  router.patch("/agent/:id/messages/:mid", sendLimiter, agentAuth, messageMutation("agent", "edit"));
+  router.delete("/agent/:id/messages/:mid", sendLimiter, agentAuth, messageMutation("agent", "delete"));
 
   router.post("/agent/:id/close", sendLimiter, agentAuth, async (req, res, next) => {
     try {
@@ -415,7 +496,10 @@ export function createHandoffRouter(db: Pool): Router {
   router.get("/:id/messages", pollLimiter, customerAuth, async (req, res, next) => {
     try {
       const s = (req as Authed).session as SessionRow;
-      res.json({ status: s.status, messages: await loadMessages(s.id, req.query.after) });
+      res.json({
+        status: s.status,
+        messages: await loadMessages(s.id, req.query.after, req.query.since),
+      });
     } catch (err) {
       next(err);
     }
@@ -439,6 +523,9 @@ export function createHandoffRouter(db: Pool): Router {
       next(err);
     }
   });
+
+  router.patch("/:id/messages/:mid", sendLimiter, customerAuth, messageMutation("customer", "edit"));
+  router.delete("/:id/messages/:mid", sendLimiter, customerAuth, messageMutation("customer", "delete"));
 
   router.post("/:id/close", sendLimiter, customerAuth, async (req, res, next) => {
     try {
@@ -479,6 +566,9 @@ const AGENT_PAGE_HTML = `<!doctype html>
   .m.customer{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px}
   .m.agent{align-self:flex-end;background:var(--g);color:#fff;border-bottom-right-radius:4px}
   .m.system{align-self:center;background:transparent;color:var(--mut);font-size:12px;box-shadow:none;text-align:center}
+  .m.deleted{font-style:italic;opacity:.6}
+  .acts{display:inline-flex;gap:8px;margin-left:8px}
+  .acts button{background:none;border:0;padding:0;color:inherit;font-size:10px;text-decoration:underline;opacity:.8}
   .t{display:block;font-size:10px;opacity:.65;margin-top:3px}
   form{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid var(--line)}
   input{flex:1;min-width:0;font-size:16px;padding:11px 16px;border:1px solid var(--line);border-radius:999px;outline:none;background:#f8fafc}
@@ -526,20 +616,52 @@ const AGENT_CONSOLE_JS = `
     $("info").appendChild(dt); $("info").appendChild(dd);
   }
 
-  function render(m) {
-    if (seen[m.id]) return;
-    seen[m.id] = true; last = Math.max(last, m.id);
-    var d = document.createElement("div");
-    d.className = "m " + (m.sender === "agent" ? "agent" : m.sender === "customer" ? "customer" : "system");
-    d.textContent = m.text;
+  var els = {}, since = "";
+
+  function fill(d, m) {
+    d.className = "m " + (m.sender === "agent" ? "agent" : m.sender === "customer" ? "customer" : "system") + (m.deleted ? " deleted" : "");
+    d.textContent = m.deleted ? "This message was deleted" : m.text;
     if (m.sender !== "system") {
       var t = document.createElement("span"); t.className = "t";
-      t.textContent = new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      t.textContent = new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + (m.edited ? " (edited)" : "");
+      if (m.sender === "agent" && !m.deleted && status !== "closed") {
+        var acts = document.createElement("span"); acts.className = "acts";
+        var eb = document.createElement("button"); eb.type = "button"; eb.textContent = "Edit";
+        eb.onclick = function () { editMsg(m); };
+        var db = document.createElement("button"); db.type = "button"; db.textContent = "Delete";
+        db.onclick = function () { delMsg(m); };
+        acts.appendChild(eb); acts.appendChild(db); t.appendChild(acts);
+      }
       d.appendChild(t);
     }
+  }
+
+  function render(m) {
+    if (m.updatedAt && (!since || m.updatedAt > since)) since = m.updatedAt;
+    if (seen[m.id]) { fill(els[m.id], m); return; }
+    seen[m.id] = true; last = Math.max(last, m.id);
+    var d = document.createElement("div"); els[m.id] = d; fill(d, m);
     var nearBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 80;
     msgsEl.appendChild(d);
     if (nearBottom || m.sender === "agent") msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
+  async function editMsg(m) {
+    var text = prompt("Edit message", m.text);
+    if (text === null) return; text = text.trim();
+    if (!text || text === m.text) return;
+    var r = await fetch(api + "/messages/" + m.id, { method: "PATCH", headers: headers(), body: JSON.stringify({ text: text }) }).catch(function () {});
+    var d = r ? await r.json().catch(function () { return {}; }) : {};
+    if (!r || !r.ok) { fail(d.message || "Could not edit."); return; }
+    fail(""); render(d.message);
+  }
+
+  async function delMsg(m) {
+    if (!confirm("Delete this message for everyone?")) return;
+    var r = await fetch(api + "/messages/" + m.id, { method: "DELETE", headers: headers() }).catch(function () {});
+    var d = r ? await r.json().catch(function () { return {}; }) : {};
+    if (!r || !r.ok) { fail(d.message || "Could not delete."); return; }
+    fail(""); render(d.message);
   }
 
   function setStatus(s) {
@@ -552,7 +674,7 @@ const AGENT_CONSOLE_JS = `
 
   async function load(first) {
     try {
-      var r = await fetch(api + "?after=" + last, { headers: headers() });
+      var r = await fetch(api + "?after=" + last + (since ? "&since=" + encodeURIComponent(since) : ""), { headers: headers() });
       if (r.status === 401) { fail("This link is invalid or has expired."); clearInterval(timer); setStatus("closed"); return; }
       if (!r.ok) { fail("Connection problem, retrying..."); return; }
       var d = await r.json(); fail("");

@@ -87,6 +87,12 @@ export async function initDatabase(): Promise<boolean> {
       )
     `);
     await pool.query(`
+      ALTER TABLE handoff_messages
+        ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()
+    `);
+    await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_handoff_messages_session
       ON handoff_messages(handoff_id, id)
     `);
